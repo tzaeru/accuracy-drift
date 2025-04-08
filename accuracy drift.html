@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>N-Body Simulation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="controls-panel">
+        <div>
+            <label for="gravitySlider">Gravity (G): </label>
+            <input type="range" id="gravitySlider" min="0.01" max="2.0" step="0.01" value="1">
+            <span id="gravityValue">1.0</span>
+        </div>
+        <div>
+            <label for="particlesSlider">Particles: </label>
+            <input type="range" id="particlesSlider" min="2" max="128" step="1" value="16">
+            <span id="particlesValue">64</span>
+        </div>
+        <div>
+            <label for="substepsSlider">Substeps: </label>
+            <input type="range" id="substepsSlider" min="1" max="100" step="1" value="40">
+            <span id="substepsValue">10</span>
+        </div>
+        <div>
+            <label for="timestepSlider">Timestep (ms): </label>
+            <input type="range" id="timestepSlider" min="1" max="10" step="0.1" value="2.5">
+            <span id="timestepValue">2.5</span>
+        </div>
+        <div>
+            <button id="resetButton" style="padding: 8px 16px;">Reset Simulation</button>
+        </div>
+    </div>
+
+    
+    <div class="canvas-container">
+        <canvas id="singleAndEulerCanvas" width="300" height="300"></canvas>
+        <canvas id="singleAndVerletCanvas" width="300" height="300"></canvas>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="doubleAndEulerCanvas" width="300" height="300"></canvas>
+        <canvas id="doubleAndVerletCanvas" width="300" height="300"></canvas>
+    </div>
+
+    <script>
+        class Simulation {
+            constructor(canvasId) {
+                this.canvasId = canvasId;
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.particles = [];
+                this.expectedEnergy = 0;
+                this.disintegrationAt = 0;
+                this.runtime = 0;
+                this.startedAt = performance.now();
+                this.lastTime = performance.now();
+            }
+
+            createInitialParticles() {
+                for (let i = this.particles.length; i < particleCount; i++) {
+                    if (this.canvasId.includes('single')) {     
+                        const angle = (i / particleCount) * Math.PI * 2;
+                        const x = Math.fround(Math.cos(angle));
+                        const y = Math.fround(Math.sin(angle));
+                        this.particles.push(new Particle(x, y));
+                    } else {
+                        const angle = (i / particleCount) * Math.PI * 2;
+                        const x = Math.cos(angle);
+                        const y = Math.sin(angle);
+                        this.particles.push(new Particle(x, y));
+                    }
+                }
+            }
+
+            calculateGravitationalPull(particle) {
+                let totalForceX = 0;
+                let totalForceY = 0;
+
+                for (const other of this.particles) {
+                    if (other === particle) continue;
+
+                    const dx = other.position.x - particle.position.x;
+                    const dy = other.position.y - particle.position.y;
+
+                    if (this.canvasId.includes('single')) { 
+                        const distance = Math.fround(Math.sqrt(dx * dx + dy * dy));
+
+                        totalForceX += Math.fround(G * (dx / distance));
+                        totalForceY += Math.fround(G * (dy / distance));
+                    } else {
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        totalForceX += G * (dx / distance);
+                        totalForceY += G * (dy / distance);
+                    }
+                }
+
+                return {
+                    x: totalForceX,
+                    y: totalForceY,
+                    magnitude: Math.sqrt(totalForceX * totalForceX + totalForceY * totalForceY)
+                };
+            }
+
+            initializeOrbitalVelocities() {
+                for (const particle of this.particles) {
+                    const force = this.calculateGravitationalPull(particle);
+                    
+                    const orbitalSpeed = Math.sqrt(force.magnitude);
+                    
+                    const forceDir = Math.atan2(force.y, force.x);
+                    const perpDir = forceDir + Math.PI/2;
+                    
+                    if (this.canvasId.includes('single')) { 
+                        particle.velocity.x = Math.fround(orbitalSpeed * Math.cos(perpDir));
+                        particle.velocity.y = Math.fround(orbitalSpeed * Math.sin(perpDir));
+                    } else {
+                        particle.velocity.x = orbitalSpeed * Math.cos(perpDir);
+                        particle.velocity.y = orbitalSpeed * Math.sin(perpDir);
+                    }
+
+                    particle.acceleration.x = force.x;
+                    particle.acceleration.y = force.y;
+                }
+
+                this.expectedEnergy = this.calculateTotalEnergy();
+            }
+
+            updatePositions(subDeltaTime) {
+                for (const particle of this.particles) {
+                    if (this.canvasId.includes('single')) {
+                        particle.position.x += Math.fround(particle.velocity.x * subDeltaTime);
+                        particle.position.y += Math.fround(particle.velocity.y * subDeltaTime);
+                    } else {
+                        particle.position.x += particle.velocity.x * subDeltaTime;
+                        particle.position.y += particle.velocity.y * subDeltaTime;
+                    }
+                }
+            }
+
+            updateAccelerations() {
+                for (const particle of this.particles) {
+                    const force = this.calculateGravitationalPull(particle);
+                    particle.acceleration.x = force.x;
+                    particle.acceleration.y = force.y;
+                }
+            }
+
+            updateVelocities(subDeltaTime) {
+                for (const particle of this.particles) {
+                    if (this.canvasId.includes('single')) {
+                        particle.velocity.x += Math.fround(particle.acceleration.x * subDeltaTime);
+                        particle.velocity.y += Math.fround(particle.acceleration.y * subDeltaTime);
+                    } else {
+                        particle.velocity.x += particle.acceleration.x * subDeltaTime;
+                        particle.velocity.y += particle.acceleration.y * subDeltaTime;
+                    }
+                }
+            }
+
+            drawParticles() {
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+
+                for (const [index, particle] of this.particles.entries()) {
+                    const x = particle.position.x * SCALE - 32 + centerX;
+                    const y = particle.position.y * SCALE - 32 + centerY;
+                    
+                    const particleImage = new Image();
+                    if (index == 0) {
+                        particleImage.src = 'particle.png';
+                    } else {
+                        particleImage.src = 'particle.png';
+                    }
+                    this.ctx.drawImage(particleImage, x, y, 64, 64);
+                }
+            }
+
+            calculateAverageDistance() {
+                let totalDistance = 0;
+                for (const particle of this.particles) {
+                    const dx = particle.position.x;
+                    const dy = particle.position.y;
+                    totalDistance += Math.sqrt(dx * dx + dy * dy);
+                }
+                return totalDistance / this.particles.length;
+            }
+
+            calculateTotalEnergy() {
+                let totalEnergy = 0;
+                for (const particle of this.particles) {
+                    totalEnergy += 0.5 * particle.velocity.x * particle.velocity.x + 0.5 * particle.velocity.y * particle.velocity.y;
+                }
+                return totalEnergy;
+            }
+
+            calculateLargestDistance() {
+                let largestDistance = 0;
+                for (let i = 0; i < this.particles.length - 1; i++) {
+                    const particle1 = this.particles[i];
+                    const particle2 = this.particles[i + 1];
+                    const dx = particle2.position.x - particle1.position.x;
+                    const dy = particle2.position.y - particle1.position.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    largestDistance = Math.max(largestDistance, distance);
+                }
+                return largestDistance;
+            }
+
+            draw() {
+                const deltaTime = timestep / 1000; // Convert ms to seconds
+                const subDeltaTime = deltaTime / substeps;
+
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                for (let step = 0; step < substeps; step++) {
+                    if (this.canvasId.includes('Euler')) {
+                        this.updateVelocities(subDeltaTime);
+                        this.updatePositions(subDeltaTime);
+                        this.updateAccelerations();
+                    } else { 
+                        this.updateVelocities(subDeltaTime*0.5);
+                        this.updatePositions(subDeltaTime);
+                        this.updateAccelerations();
+                        this.updateVelocities(subDeltaTime*0.5);
+                    }
+                }
+
+                this.drawParticles();
+                
+                const averageDistance = this.calculateAverageDistance();
+                this.ctx.fillStyle = 'black';
+                this.ctx.font = '16px Arial';
+                const distDrift = Math.sqrt(Math.abs(averageDistance - 1)) * -Math.sign(averageDistance - 1);
+                this.ctx.fillText(`Dist drift: ${distDrift.toFixed(4)}`, 10, 20);
+
+                const energyDrift = Math.sqrt(Math.abs(this.calculateTotalEnergy() - this.expectedEnergy)) * Math.sign(this.calculateTotalEnergy() - this.expectedEnergy);
+                this.ctx.fillText(`Energy drift: ${energyDrift.toFixed(4)}`, 150, 20);
+
+                const currentTime = performance.now();
+                this.runtime = (currentTime - this.startedAt)/1000.0;
+                this.lastTime = currentTime;
+
+                if (this.disintegrationAt == 0) {
+                    if (this.calculateLargestDistance() > (Math.PI/particleCount)*2.2)
+                        this.disintegrationAt = this.runtime;
+                }
+
+                if (this.disintegrationAt > 0) {
+                    this.ctx.fillStyle = 'red';
+                    this.ctx.fillText(`Decohesion at: ${this.disintegrationAt.toFixed(1)}`, 10, 290);
+                } else {
+                    this.ctx.fillStyle = 'black';
+                    this.ctx.fillText(`Runtime: ${this.runtime.toFixed(1)}`, 10, 290);
+                }
+
+                let typeText = '';
+                if (this.canvasId == 'singleAndEulerCanvas') {
+                    typeText = 'euler / 32bit';
+                } else if (this.canvasId == 'singleAndVerletCanvas') {
+                    typeText = 'verlet / 32bit';
+                } else if (this.canvasId == 'doubleAndEulerCanvas') {
+                    typeText = 'euler / 64bit';
+                } else if (this.canvasId == 'doubleAndVerletCanvas') {
+                    typeText = 'verlet / 64bit';
+                }
+                
+                this.ctx.fillStyle = 'black';
+                this.ctx.font = 'bold 16px Arial';
+                this.ctx.fillText(typeText, 200, 290);
+
+                requestAnimationFrame(() => this.draw());
+            }
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.position = { x, y };
+                this.velocity = { x: 0, y: 0 };
+                this.acceleration = { x: 0, y: 0 };
+            }
+        }
+
+        let G = 1;
+        const SCALE = 100.0;
+        let substeps = 10;
+        let particleCount = 16;
+        let timestep = 2.5;
+
+        // Create simulations
+        const simulations = [
+            new Simulation('singleAndEulerCanvas'),
+            new Simulation('singleAndVerletCanvas'),
+            new Simulation('doubleAndEulerCanvas'),
+            new Simulation('doubleAndVerletCanvas')
+        ];
+
+        // Add gravity slider handling
+        const gravitySlider = document.getElementById('gravitySlider');
+        const gravityValue = document.getElementById('gravityValue');
+
+        // Add particles slider handling
+        const particlesSlider = document.getElementById('particlesSlider');
+        const particlesValue = document.getElementById('particlesValue');
+
+        // Add substeps slider handling
+        const substepSlider = document.getElementById('substepsSlider');
+        const substepValue = document.getElementById('substepsValue');
+
+        // Add timestep slider handling
+        const timestepSlider = document.getElementById('timestepSlider');
+        const timestepValue = document.getElementById('timestepValue');
+
+        // Read initial values
+        G = parseFloat(gravitySlider.value);
+        gravityValue.textContent = G.toFixed(2);
+        particleCount = parseInt(particlesSlider.value);
+        particlesValue.textContent = particleCount;
+        substeps = parseInt(substepSlider.value);
+        substepValue.textContent = substeps;
+        timestep = parseFloat(timestepSlider.value);
+        timestepValue.textContent = timestep.toFixed(1);
+
+        gravitySlider.addEventListener('input', function() {
+            G = parseFloat(this.value);
+            gravityValue.textContent = G.toFixed(2);
+        });
+
+        particlesSlider.addEventListener('input', function() {
+            particleCount = parseInt(this.value);
+            particlesValue.textContent = particleCount;
+
+            for (const sim of simulations) {
+                if (sim.particles.length > particleCount) {
+                    sim.particles.length = particleCount;
+                }
+                sim.createInitialParticles();
+                sim.initializeOrbitalVelocities();
+            }
+        });
+
+        substepSlider.addEventListener('input', function() {
+            substeps = parseInt(this.value);
+            substepValue.textContent = substeps;
+        });
+
+        timestepSlider.addEventListener('input', function() {
+            timestep = parseFloat(this.value);
+            timestepValue.textContent = timestep.toFixed(1);
+        });
+
+        const resetButton = document.getElementById('resetButton');
+        resetButton.addEventListener('click', function() {
+            for (const sim of simulations) {
+                sim.particles.length = 0;
+                sim.createInitialParticles();
+                sim.initializeOrbitalVelocities();
+                sim.startedAt = performance.now();
+                sim.lastTime = performance.now();
+                sim.disintegrationAt = 0;
+            }
+        });
+
+        // Initialize and start all simulations
+        for (const sim of simulations) {
+            sim.createInitialParticles();
+            sim.initializeOrbitalVelocities();
+            sim.draw();
+        }
+    </script>
+</body>
+</html>

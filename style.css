@@ -1,0 +1,44 @@
+body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    background-color: #f0f0f0;
+    padding: 20px;
+}
+
+.controls-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 15px;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.controls-panel div {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.controls-panel label {
+    white-space: nowrap;
+}
+
+.controls-panel input[type="range"] {
+    width: 300px;
+}
+
+.controls-panel span {
+    min-width: 40px;
+    text-align: right;
+}
+
+canvas {
+    border: 1px solid black;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+} 
