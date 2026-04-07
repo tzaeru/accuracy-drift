@@ -9,55 +9,43 @@
     <body>
         <div class="controls-panel">
             <div>
-                <label for="gravitySlider">Gravity (G): </label>
-                <input
-                    type="range"
-                    id="gravitySlider"
-                    min="0.01"
-                    max="2.0"
-                    step="0.01"
-                    value="1"
-                />
+                <label for="gravitySlider">Gravity (G):</label>
+                <input type="range" id="gravitySlider" min="0.01" max="2.0" step="0.01" value="1" />
                 <span id="gravityValue">1.0</span>
+                <label class="sway-toggle"><input type="checkbox" class="swayCheckbox" data-slider="gravitySlider" /> sway</label>
+                <span class="sway-readout" data-slider="gravitySlider"></span>
             </div>
             <div>
-                <label for="particlesSlider">Particles: </label>
-                <input
-                    type="range"
-                    id="particlesSlider"
-                    min="2"
-                    max="128"
-                    step="1"
-                    value="60"
-                />
+                <label for="particlesSlider">Particles:</label>
+                <input type="range" id="particlesSlider" min="2" max="128" step="1" value="60" />
                 <span id="particlesValue">64</span>
             </div>
             <div>
-                <label for="substepsSlider">Substeps: </label>
-                <input
-                    type="range"
-                    id="substepsSlider"
-                    min="1"
-                    max="100"
-                    step="1"
-                    value="4"
-                />
+                <label for="substepsSlider">Substeps:</label>
+                <input type="range" id="substepsSlider" min="1" max="100" step="1" value="4" />
                 <span id="substepsValue">10</span>
+                <label class="sway-toggle"><input type="checkbox" class="swayCheckbox" data-slider="substepsSlider" /> sway</label>
+                <span class="sway-readout" data-slider="substepsSlider"></span>
             </div>
             <div>
-                <label for="timestepSlider">Timestep (ms): </label>
-                <input
-                    type="range"
-                    id="timestepSlider"
-                    min="10"
-                    max="100"
-                    step="1"
-                    value="50"
-                />
+                <label for="timestepSlider">Timestep (ms):</label>
+                <input type="range" id="timestepSlider" min="10" max="100" step="1" value="50" />
                 <span id="timestepValue">2.5</span>
+                <label class="sway-toggle"><input type="checkbox" class="swayCheckbox" data-slider="timestepSlider" /> sway</label>
+                <span class="sway-readout" data-slider="timestepSlider"></span>
             </div>
             <div>
-                <button id="resetButton" style="padding: 8px 16px">
+                <label for="swayPeriodSlider">Sway period (s):</label>
+                <input type="range" id="swayPeriodSlider" min="0.1" max="10" step="0.1" value="2" />
+                <span id="swayPeriodValue">2.0</span>
+            </div>
+            <div>
+                <label for="swayAmplitudeSlider">Sway amplitude (%):</label>
+                <input type="range" id="swayAmplitudeSlider" min="1" max="50" step="1" value="10" />
+                <span id="swayAmplitudeValue">10</span>
+            </div>
+            <div>
+                <button id="resetButton" style="padding: 6px 14px">
                     Reset Simulation
                 </button>
             </div>
@@ -95,6 +83,37 @@
             let substeps = 4;
             let particleCount = 60;
             let timestep = 50;
+
+            // Sway modulation state
+            let swayPeriod = 2;
+            let swayAmplitude = 0.1;
+            const swayEnabled = {}; // sliderId -> bool
+            const swayBaseValues = {}; // sliderId -> base value set by slider
+
+            // Map slider IDs to the setter that applies their value
+            const SWAY_TARGETS = {
+                gravitySlider:  (v) => G = v,
+                substepsSlider: (v) => substeps = Math.max(1, Math.round(v)),
+                timestepSlider: (v) => timestep = Math.max(1, v),
+            };
+
+            const swayReadouts = {};
+
+            function applySway(now) {
+                const phase = (now / 1000) * (2 * Math.PI / swayPeriod);
+                for (const [sliderId, setter] of Object.entries(SWAY_TARGETS)) {
+                    const readout = swayReadouts[sliderId];
+                    if (!swayEnabled[sliderId]) {
+                        if (readout) readout.textContent = "";
+                        continue;
+                    }
+                    const base = swayBaseValues[sliderId];
+                    if (base === undefined) continue;
+                    const val = base * (1 + swayAmplitude * Math.sin(phase));
+                    setter(val);
+                    if (readout) readout.textContent = val.toFixed(2);
+                }
+            }
 
             const INTEGRATORS = {
                 explicitEuler:     { fn: explicitEulerStep,     label: "Explicit Euler" },
@@ -184,6 +203,7 @@
                 }
 
                 draw() {
+                    applySway(performance.now());
                     const dt = timestep / 1000 / substeps;
                     const { ctx, canvas } = this;
                     const pullFn = (p) => this.gravityPull(p);
@@ -261,10 +281,11 @@
                 const update = () => {
                     const val = parse(slider.value);
                     display.textContent = format(val);
+                    if (id in SWAY_TARGETS) swayBaseValues[id] = val;
                     onChange(val);
                 };
                 slider.addEventListener("input", update);
-                update(); // sync initial value
+                update();
             }
 
             bindSlider("gravitySlider", "gravityValue", parseFloat, v => v.toFixed(2), v => G = v);
@@ -279,6 +300,24 @@
             });
             bindSlider("substepsSlider", "substepsValue", parseInt, String, v => substeps = v);
             bindSlider("timestepSlider", "timestepValue", parseFloat, v => v.toFixed(1), v => timestep = v);
+            bindSlider("swayPeriodSlider", "swayPeriodValue", parseFloat, v => v.toFixed(1), v => swayPeriod = v);
+            bindSlider("swayAmplitudeSlider", "swayAmplitudeValue", parseInt, String, v => swayAmplitude = v / 100);
+
+            // Sway readouts
+            for (const el of document.querySelectorAll(".sway-readout"))
+                swayReadouts[el.dataset.slider] = el;
+
+            // Sway checkboxes
+            for (const cb of document.querySelectorAll(".swayCheckbox")) {
+                const sliderId = cb.dataset.slider;
+                swayEnabled[sliderId] = cb.checked;
+                cb.addEventListener("change", () => {
+                    swayEnabled[sliderId] = cb.checked;
+                    if (!cb.checked && sliderId in SWAY_TARGETS) {
+                        SWAY_TARGETS[sliderId](swayBaseValues[sliderId]);
+                    }
+                });
+            }
 
             document.getElementById("resetButton").addEventListener("click", () => {
                 for (const sim of simulations) sim.reset();
