@@ -1,374 +1,294 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>N-Body Simulation</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div class="controls-panel">
-        <div>
-            <label for="gravitySlider">Gravity (G): </label>
-            <input type="range" id="gravitySlider" min="0.01" max="2.0" step="0.01" value="1">
-            <span id="gravityValue">1.0</span>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>N-Body Simulation</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <div class="controls-panel">
+            <div>
+                <label for="gravitySlider">Gravity (G): </label>
+                <input
+                    type="range"
+                    id="gravitySlider"
+                    min="0.01"
+                    max="2.0"
+                    step="0.01"
+                    value="1"
+                />
+                <span id="gravityValue">1.0</span>
+            </div>
+            <div>
+                <label for="particlesSlider">Particles: </label>
+                <input
+                    type="range"
+                    id="particlesSlider"
+                    min="2"
+                    max="128"
+                    step="1"
+                    value="60"
+                />
+                <span id="particlesValue">64</span>
+            </div>
+            <div>
+                <label for="substepsSlider">Substeps: </label>
+                <input
+                    type="range"
+                    id="substepsSlider"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value="4"
+                />
+                <span id="substepsValue">10</span>
+            </div>
+            <div>
+                <label for="timestepSlider">Timestep (ms): </label>
+                <input
+                    type="range"
+                    id="timestepSlider"
+                    min="10"
+                    max="100"
+                    step="1"
+                    value="50"
+                />
+                <span id="timestepValue">2.5</span>
+            </div>
+            <div>
+                <button id="resetButton" style="padding: 8px 16px">
+                    Reset Simulation
+                </button>
+            </div>
         </div>
-        <div>
-            <label for="particlesSlider">Particles: </label>
-            <input type="range" id="particlesSlider" min="2" max="128" step="1" value="16">
-            <span id="particlesValue">64</span>
-        </div>
-        <div>
-            <label for="substepsSlider">Substeps: </label>
-            <input type="range" id="substepsSlider" min="1" max="100" step="1" value="40">
-            <span id="substepsValue">10</span>
-        </div>
-        <div>
-            <label for="timestepSlider">Timestep (ms): </label>
-            <input type="range" id="timestepSlider" min="1" max="10" step="0.1" value="2.5">
-            <span id="timestepValue">2.5</span>
-        </div>
-        <div>
-            <button id="resetButton" style="padding: 8px 16px;">Reset Simulation</button>
-        </div>
-    </div>
 
-    
-    <div class="canvas-container">
-        <canvas id="singleAndEulerCanvas" width="300" height="300"></canvas>
-        <canvas id="singleAndVerletCanvas" width="300" height="300"></canvas>
-    </div>
+        <div class="canvas-container">
+            <canvas id="explicitEuler_f32" width="300" height="300"></canvas>
+            <canvas id="semiImplicitEuler_f32" width="300" height="300"></canvas>
+            <canvas id="leapfrog_f32" width="300" height="300"></canvas>
+            <canvas id="stormerVerlet_f32" width="300" height="300"></canvas>
+            <canvas id="velocityVerlet_f32" width="300" height="300"></canvas>
+        </div>
 
-    <div class="canvas-container">
-        <canvas id="doubleAndEulerCanvas" width="300" height="300"></canvas>
-        <canvas id="doubleAndVerletCanvas" width="300" height="300"></canvas>
-    </div>
+        <div class="canvas-container">
+            <canvas id="explicitEuler_f64" width="300" height="300"></canvas>
+            <canvas id="semiImplicitEuler_f64" width="300" height="300"></canvas>
+            <canvas id="leapfrog_f64" width="300" height="300"></canvas>
+            <canvas id="stormerVerlet_f64" width="300" height="300"></canvas>
+            <canvas id="velocityVerlet_f64" width="300" height="300"></canvas>
+        </div>
 
-    <script>
-        class Simulation {
-            constructor(canvasId) {
-                this.canvasId = canvasId;
-                this.canvas = document.getElementById(canvasId);
-                this.ctx = this.canvas.getContext('2d');
-                this.particles = [];
-                this.expectedEnergy = 0;
-                this.disintegrationAt = 0;
-                this.runtime = 0;
-                this.startedAt = performance.now();
-                this.lastTime = performance.now();
-            }
+        <script src="particles.js"></script>
+        <script src="integrators/common.js"></script>
+        <script src="integrators/explicit-euler.js"></script>
+        <script src="integrators/semi-implicit-euler.js"></script>
+        <script src="integrators/leapfrog.js"></script>
+        <script src="integrators/stormer-verlet.js"></script>
+        <script src="integrators/velocity-verlet.js"></script>
+        <script>
+            const particleSprite = new Image();
+            particleSprite.src = "particle.png";
 
-            createInitialParticles() {
-                for (let i = this.particles.length; i < particleCount; i++) {
-                    if (this.canvasId.includes('single')) {     
-                        const angle = (i / particleCount) * Math.PI * 2;
-                        const x = Math.fround(Math.cos(angle));
-                        const y = Math.fround(Math.sin(angle));
-                        this.particles.push(new Particle(x, y));
-                    } else {
-                        const angle = (i / particleCount) * Math.PI * 2;
-                        const x = Math.cos(angle);
-                        const y = Math.sin(angle);
-                        this.particles.push(new Particle(x, y));
+            const SCALE = 100.0;
+            let G = 1.0;
+            let substeps = 4;
+            let particleCount = 60;
+            let timestep = 50;
+
+            const INTEGRATORS = {
+                explicitEuler:     { fn: explicitEulerStep,     label: "Explicit Euler" },
+                semiImplicitEuler: { fn: semiImplicitEulerStep, label: "Semi-implicit Euler" },
+                leapfrog:          { fn: leapfrogStep,          label: "Leapfrog (KDK)" },
+                stormerVerlet:     { fn: stormerVerletStep,     label: "Störmer-Verlet" },
+                velocityVerlet:    { fn: velocityVerletStep,    label: "Velocity Verlet" },
+            };
+
+            class Simulation {
+                constructor(canvasId, integratorKey, precision) {
+                    this.canvas = document.getElementById(canvasId);
+                    this.ctx = this.canvas.getContext("2d");
+                    this.particles = [];
+                    this.expectedEnergy = 0;
+                    this.gapDecohesionAt = 0;
+                    this.energyCollapseAt = 0;
+                    this.startedAt = performance.now();
+                    this.integrate = INTEGRATORS[integratorKey].fn;
+                    this.precision = precision;
+                    this.label = `${INTEGRATORS[integratorKey].label} / ${precision === "f32" ? "32bit" : "64bit"}`;
+                }
+
+                resetParticles() {
+                    this.particles = createParticles(this.particles, particleCount);
+                }
+
+                gravityPull(particle) {
+                    let fx = 0, fy = 0;
+                    for (const other of this.particles) {
+                        if (other === particle) continue;
+                        const dx = other.position.x - particle.position.x;
+                        const dy = other.position.y - particle.position.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        fx += G * 0.01 * dx / dist;
+                        fy += G * 0.01 * dy / dist;
                     }
+                    return { x: fx, y: fy, magnitude: Math.sqrt(fx * fx + fy * fy) };
+                }
+
+                initOrbitalVelocities() {
+                    for (const p of this.particles) {
+                        const force = this.gravityPull(p);
+                        const speed = Math.sqrt(force.magnitude);
+                        const perpDir = Math.atan2(force.y, force.x) + Math.PI / 2;
+                        p.velocity.x = speed * Math.cos(perpDir);
+                        p.velocity.y = speed * Math.sin(perpDir);
+                        p.acceleration.x = force.x;
+                        p.acceleration.y = force.y;
+                    }
+                    this.expectedEnergy = this.totalEnergy();
+                }
+
+                totalEnergy() {
+                    let e = 0;
+                    for (const p of this.particles) {
+                        e += 0.5 * (p.velocity.x ** 2 + p.velocity.y ** 2);
+                    }
+                    return e;
+                }
+
+                avgDistance() {
+                    let sum = 0;
+                    for (const p of this.particles)
+                        sum += Math.sqrt(p.position.x ** 2 + p.position.y ** 2);
+                    return sum / this.particles.length;
+                }
+
+                maxNeighborGap() {
+                    let max = 0;
+                    for (let i = 0; i < this.particles.length - 1; i++) {
+                        const a = this.particles[i], b = this.particles[i + 1];
+                        const dx = b.position.x - a.position.x;
+                        const dy = b.position.y - a.position.y;
+                        max = Math.max(max, Math.sqrt(dx * dx + dy * dy));
+                    }
+                    return max;
+                }
+
+                reset() {
+                    this.particles.length = 0;
+                    this.resetParticles();
+                    this.initOrbitalVelocities();
+                    this.startedAt = performance.now();
+                    this.gapDecohesionAt = 0;
+                    this.energyCollapseAt = 0;
+                }
+
+                draw() {
+                    const dt = timestep / 1000 / substeps;
+                    const { ctx, canvas } = this;
+                    const pullFn = (p) => this.gravityPull(p);
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    for (let i = 0; i < substeps; i++)
+                        this.integrate(this.particles, dt, pullFn, this.precision);
+
+                    const cx = canvas.width / 2, cy = canvas.height / 2;
+                    for (const p of this.particles)
+                        ctx.drawImage(particleSprite, p.position.x * SCALE - 32 + cx, p.position.y * SCALE - 32 + cy, 64, 64);
+
+                    // HUD
+                    ctx.fillStyle = "black";
+                    ctx.font = "12px Arial";
+
+                    const avgDist = this.avgDistance();
+                    const distDrift = Math.sqrt(Math.abs(avgDist - 1)) * -Math.sign(avgDist - 1);
+                    ctx.fillText(`Dist drift: ${distDrift.toFixed(4)}`, 10, 20);
+
+                    const energy = this.totalEnergy();
+                    const eDiff = energy - this.expectedEnergy;
+                    const energyDrift = Math.sqrt(Math.abs(eDiff)) * Math.sign(eDiff);
+                    ctx.fillText(`Energy drift: ${energyDrift.toFixed(4)}`, 190, 20);
+
+                    const runtime = (performance.now() - this.startedAt) / 1000;
+
+                    if (!this.gapDecohesionAt && this.maxNeighborGap() > (Math.PI / particleCount) * 2.2)
+                        this.gapDecohesionAt = runtime;
+
+                    const energyRatio = Math.abs(energy / this.expectedEnergy - 1);
+                    if (!this.energyCollapseAt && energyRatio > 0.1)
+                        this.energyCollapseAt = runtime;
+
+                    ctx.font = "11px Arial";
+
+                    // Bottom-left: gap decohesion
+                    if (this.gapDecohesionAt) {
+                        ctx.fillStyle = "red";
+                        ctx.fillText(`Gap decoh: ${this.gapDecohesionAt.toFixed(1)}s`, 10, 290);
+                    } else {
+                        ctx.fillStyle = "black";
+                        ctx.fillText(`Runtime: ${runtime.toFixed(1)}s`, 10, 290);
+                    }
+
+                    // Bottom-right: energy collapse
+                    if (this.energyCollapseAt) {
+                        ctx.fillStyle = "red";
+                        ctx.fillText(`E collapse: ${this.energyCollapseAt.toFixed(1)}s`, 170, 290);
+                    } else {
+                        ctx.fillStyle = "green";
+                        ctx.fillText(`E stable (${(energyRatio * 100).toFixed(1)}%)`, 170, 290);
+                    }
+
+                    ctx.fillStyle = "black";
+                    ctx.font = "bold 11px Arial";
+                    ctx.fillText(this.label, 10, 275);
+
+                    requestAnimationFrame(() => this.draw());
                 }
             }
 
-            calculateGravitationalPull(particle) {
-                let totalForceX = 0;
-                let totalForceY = 0;
-
-                for (const other of this.particles) {
-                    if (other === particle) continue;
-
-                    const dx = other.position.x - particle.position.x;
-                    const dy = other.position.y - particle.position.y;
-
-                    if (this.canvasId.includes('single')) { 
-                        const distance = Math.fround(Math.sqrt(dx * dx + dy * dy));
-
-                        totalForceX += Math.fround(G * (dx / distance));
-                        totalForceY += Math.fround(G * (dy / distance));
-                    } else {
-                        const distance = Math.sqrt(dx * dx + dy * dy);
-
-                        totalForceX += G * (dx / distance);
-                        totalForceY += G * (dy / distance);
-                    }
+            const simulations = [];
+            for (const key of Object.keys(INTEGRATORS)) {
+                for (const prec of ["f32", "f64"]) {
+                    simulations.push(new Simulation(`${key}_${prec}`, key, prec));
                 }
+            }
 
-                return {
-                    x: totalForceX,
-                    y: totalForceY,
-                    magnitude: Math.sqrt(totalForceX * totalForceX + totalForceY * totalForceY)
+            // Slider binding helper
+            function bindSlider(id, valueId, parse, format, onChange) {
+                const slider = document.getElementById(id);
+                const display = document.getElementById(valueId);
+                const update = () => {
+                    const val = parse(slider.value);
+                    display.textContent = format(val);
+                    onChange(val);
                 };
+                slider.addEventListener("input", update);
+                update(); // sync initial value
             }
 
-            initializeOrbitalVelocities() {
-                for (const particle of this.particles) {
-                    const force = this.calculateGravitationalPull(particle);
-                    
-                    const orbitalSpeed = Math.sqrt(force.magnitude);
-                    
-                    const forceDir = Math.atan2(force.y, force.x);
-                    const perpDir = forceDir + Math.PI/2;
-                    
-                    if (this.canvasId.includes('single')) { 
-                        particle.velocity.x = Math.fround(orbitalSpeed * Math.cos(perpDir));
-                        particle.velocity.y = Math.fround(orbitalSpeed * Math.sin(perpDir));
-                    } else {
-                        particle.velocity.x = orbitalSpeed * Math.cos(perpDir);
-                        particle.velocity.y = orbitalSpeed * Math.sin(perpDir);
-                    }
-
-                    particle.acceleration.x = force.x;
-                    particle.acceleration.y = force.y;
+            bindSlider("gravitySlider", "gravityValue", parseFloat, v => v.toFixed(2), v => G = v);
+            bindSlider("particlesSlider", "particlesValue", parseInt, String, v => {
+                particleCount = v;
+                for (const sim of simulations) {
+                    if (sim.particles.length > particleCount)
+                        sim.particles.length = particleCount;
+                    sim.resetParticles();
+                    sim.initOrbitalVelocities();
                 }
+            });
+            bindSlider("substepsSlider", "substepsValue", parseInt, String, v => substeps = v);
+            bindSlider("timestepSlider", "timestepValue", parseFloat, v => v.toFixed(1), v => timestep = v);
 
-                this.expectedEnergy = this.calculateTotalEnergy();
-            }
-
-            updatePositions(subDeltaTime) {
-                for (const particle of this.particles) {
-                    if (this.canvasId.includes('single')) {
-                        particle.position.x += Math.fround(particle.velocity.x * subDeltaTime);
-                        particle.position.y += Math.fround(particle.velocity.y * subDeltaTime);
-                    } else {
-                        particle.position.x += particle.velocity.x * subDeltaTime;
-                        particle.position.y += particle.velocity.y * subDeltaTime;
-                    }
-                }
-            }
-
-            updateAccelerations() {
-                for (const particle of this.particles) {
-                    const force = this.calculateGravitationalPull(particle);
-                    particle.acceleration.x = force.x;
-                    particle.acceleration.y = force.y;
-                }
-            }
-
-            updateVelocities(subDeltaTime) {
-                for (const particle of this.particles) {
-                    if (this.canvasId.includes('single')) {
-                        particle.velocity.x += Math.fround(particle.acceleration.x * subDeltaTime);
-                        particle.velocity.y += Math.fround(particle.acceleration.y * subDeltaTime);
-                    } else {
-                        particle.velocity.x += particle.acceleration.x * subDeltaTime;
-                        particle.velocity.y += particle.acceleration.y * subDeltaTime;
-                    }
-                }
-            }
-
-            drawParticles() {
-                const centerX = this.canvas.width / 2;
-                const centerY = this.canvas.height / 2;
-
-                for (const [index, particle] of this.particles.entries()) {
-                    const x = particle.position.x * SCALE - 32 + centerX;
-                    const y = particle.position.y * SCALE - 32 + centerY;
-                    
-                    const particleImage = new Image();
-                    if (index == 0) {
-                        particleImage.src = 'particle.png';
-                    } else {
-                        particleImage.src = 'particle.png';
-                    }
-                    this.ctx.drawImage(particleImage, x, y, 64, 64);
-                }
-            }
-
-            calculateAverageDistance() {
-                let totalDistance = 0;
-                for (const particle of this.particles) {
-                    const dx = particle.position.x;
-                    const dy = particle.position.y;
-                    totalDistance += Math.sqrt(dx * dx + dy * dy);
-                }
-                return totalDistance / this.particles.length;
-            }
-
-            calculateTotalEnergy() {
-                let totalEnergy = 0;
-                for (const particle of this.particles) {
-                    totalEnergy += 0.5 * particle.velocity.x * particle.velocity.x + 0.5 * particle.velocity.y * particle.velocity.y;
-                }
-                return totalEnergy;
-            }
-
-            calculateLargestDistance() {
-                let largestDistance = 0;
-                for (let i = 0; i < this.particles.length - 1; i++) {
-                    const particle1 = this.particles[i];
-                    const particle2 = this.particles[i + 1];
-                    const dx = particle2.position.x - particle1.position.x;
-                    const dy = particle2.position.y - particle1.position.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    largestDistance = Math.max(largestDistance, distance);
-                }
-                return largestDistance;
-            }
-
-            draw() {
-                const deltaTime = timestep / 1000; // Convert ms to seconds
-                const subDeltaTime = deltaTime / substeps;
-
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-                for (let step = 0; step < substeps; step++) {
-                    if (this.canvasId.includes('Euler')) {
-                        this.updateVelocities(subDeltaTime);
-                        this.updatePositions(subDeltaTime);
-                        this.updateAccelerations();
-                    } else { 
-                        this.updateVelocities(subDeltaTime*0.5);
-                        this.updatePositions(subDeltaTime);
-                        this.updateAccelerations();
-                        this.updateVelocities(subDeltaTime*0.5);
-                    }
-                }
-
-                this.drawParticles();
-                
-                const averageDistance = this.calculateAverageDistance();
-                this.ctx.fillStyle = 'black';
-                this.ctx.font = '16px Arial';
-                const distDrift = Math.sqrt(Math.abs(averageDistance - 1)) * -Math.sign(averageDistance - 1);
-                this.ctx.fillText(`Dist drift: ${distDrift.toFixed(4)}`, 10, 20);
-
-                const energyDrift = Math.sqrt(Math.abs(this.calculateTotalEnergy() - this.expectedEnergy)) * Math.sign(this.calculateTotalEnergy() - this.expectedEnergy);
-                this.ctx.fillText(`Energy drift: ${energyDrift.toFixed(4)}`, 150, 20);
-
-                const currentTime = performance.now();
-                this.runtime = (currentTime - this.startedAt)/1000.0;
-                this.lastTime = currentTime;
-
-                if (this.disintegrationAt == 0) {
-                    if (this.calculateLargestDistance() > (Math.PI/particleCount)*2.2)
-                        this.disintegrationAt = this.runtime;
-                }
-
-                if (this.disintegrationAt > 0) {
-                    this.ctx.fillStyle = 'red';
-                    this.ctx.fillText(`Decohesion at: ${this.disintegrationAt.toFixed(1)}`, 10, 290);
-                } else {
-                    this.ctx.fillStyle = 'black';
-                    this.ctx.fillText(`Runtime: ${this.runtime.toFixed(1)}`, 10, 290);
-                }
-
-                let typeText = '';
-                if (this.canvasId == 'singleAndEulerCanvas') {
-                    typeText = 'euler / 32bit';
-                } else if (this.canvasId == 'singleAndVerletCanvas') {
-                    typeText = 'verlet / 32bit';
-                } else if (this.canvasId == 'doubleAndEulerCanvas') {
-                    typeText = 'euler / 64bit';
-                } else if (this.canvasId == 'doubleAndVerletCanvas') {
-                    typeText = 'verlet / 64bit';
-                }
-                
-                this.ctx.fillStyle = 'black';
-                this.ctx.font = 'bold 16px Arial';
-                this.ctx.fillText(typeText, 200, 290);
-
-                requestAnimationFrame(() => this.draw());
-            }
-        }
-
-        class Particle {
-            constructor(x, y) {
-                this.position = { x, y };
-                this.velocity = { x: 0, y: 0 };
-                this.acceleration = { x: 0, y: 0 };
-            }
-        }
-
-        let G = 1;
-        const SCALE = 100.0;
-        let substeps = 10;
-        let particleCount = 16;
-        let timestep = 2.5;
-
-        // Create simulations
-        const simulations = [
-            new Simulation('singleAndEulerCanvas'),
-            new Simulation('singleAndVerletCanvas'),
-            new Simulation('doubleAndEulerCanvas'),
-            new Simulation('doubleAndVerletCanvas')
-        ];
-
-        // Add gravity slider handling
-        const gravitySlider = document.getElementById('gravitySlider');
-        const gravityValue = document.getElementById('gravityValue');
-
-        // Add particles slider handling
-        const particlesSlider = document.getElementById('particlesSlider');
-        const particlesValue = document.getElementById('particlesValue');
-
-        // Add substeps slider handling
-        const substepSlider = document.getElementById('substepsSlider');
-        const substepValue = document.getElementById('substepsValue');
-
-        // Add timestep slider handling
-        const timestepSlider = document.getElementById('timestepSlider');
-        const timestepValue = document.getElementById('timestepValue');
-
-        // Read initial values
-        G = parseFloat(gravitySlider.value);
-        gravityValue.textContent = G.toFixed(2);
-        particleCount = parseInt(particlesSlider.value);
-        particlesValue.textContent = particleCount;
-        substeps = parseInt(substepSlider.value);
-        substepValue.textContent = substeps;
-        timestep = parseFloat(timestepSlider.value);
-        timestepValue.textContent = timestep.toFixed(1);
-
-        gravitySlider.addEventListener('input', function() {
-            G = parseFloat(this.value);
-            gravityValue.textContent = G.toFixed(2);
-        });
-
-        particlesSlider.addEventListener('input', function() {
-            particleCount = parseInt(this.value);
-            particlesValue.textContent = particleCount;
+            document.getElementById("resetButton").addEventListener("click", () => {
+                for (const sim of simulations) sim.reset();
+            });
 
             for (const sim of simulations) {
-                if (sim.particles.length > particleCount) {
-                    sim.particles.length = particleCount;
-                }
-                sim.createInitialParticles();
-                sim.initializeOrbitalVelocities();
+                sim.resetParticles();
+                sim.initOrbitalVelocities();
+                sim.draw();
             }
-        });
-
-        substepSlider.addEventListener('input', function() {
-            substeps = parseInt(this.value);
-            substepValue.textContent = substeps;
-        });
-
-        timestepSlider.addEventListener('input', function() {
-            timestep = parseFloat(this.value);
-            timestepValue.textContent = timestep.toFixed(1);
-        });
-
-        const resetButton = document.getElementById('resetButton');
-        resetButton.addEventListener('click', function() {
-            for (const sim of simulations) {
-                sim.particles.length = 0;
-                sim.createInitialParticles();
-                sim.initializeOrbitalVelocities();
-                sim.startedAt = performance.now();
-                sim.lastTime = performance.now();
-                sim.disintegrationAt = 0;
-            }
-        });
-
-        // Initialize and start all simulations
-        for (const sim of simulations) {
-            sim.createInitialParticles();
-            sim.initializeOrbitalVelocities();
-            sim.draw();
-        }
-    </script>
-</body>
+        </script>
+    </body>
 </html>
